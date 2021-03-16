@@ -45,32 +45,10 @@ public class MainActivity extends AppCompatActivity {
 
         gaze = (Button) findViewById(R.id.start_act);
 
-        // 按住按钮不松开的时间内的动作视为凝视手势
-        gaze.setOnTouchListener(new View.OnTouchListener() {
-            @Override
-            public boolean onTouch(View v, MotionEvent event) {
-                switch (event.getAction()) {
-                    case MotionEvent.ACTION_DOWN:
-                        if (isCameraStart) {
-                            Toast.makeText(getApplicationContext(), "凝视开始",
-                                    Toast.LENGTH_SHORT).show();
-                        } else {
-                            Toast.makeText(getApplicationContext(), "请先开启摄像头",
-                                    Toast.LENGTH_SHORT).show();
-                        }
-                        break;
-                    case MotionEvent.ACTION_UP:
-                        if (isCameraStart) {
-                            Toast.makeText(getApplicationContext(), "凝视结束",
-                                    Toast.LENGTH_SHORT).show();
-                        }
-                        break;
-                    default:
-                        break;
-                }
-                return true;
-            }
-        });
+        // 按住按钮不松开的时间内的动作视为凝视手势，未开启摄像头时不可见
+        gaze.setOnTouchListener(new MTouchListener());
+        gaze.setVisibility(View.INVISIBLE);
+
         mainActivity = this;
 
         initBDMap();  // 初始化地图
@@ -183,12 +161,16 @@ public class MainActivity extends AppCompatActivity {
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     public void startCamera(View view) {
         if (isCameraStart) {
+            // 关闭摄像头
             cameraDemo.closeCamera();
             isCameraStart = false;
+            gaze.setVisibility(View.INVISIBLE);
         } else {
+            // 开启摄像头
             cameraDemo.setUpCamera(getApplicationContext());
             cameraDemo.openCamera();
             isCameraStart = true;
+            gaze.setVisibility(View.VISIBLE);
         }
     }
 
@@ -218,6 +200,31 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private class MTouchListener implements View.OnTouchListener {
+        @Override
+        public boolean onTouch(View v, MotionEvent event) {
+            switch (event.getAction()) {
+                case MotionEvent.ACTION_DOWN:
+                    if (isCameraStart) {
+                        Toast.makeText(getApplicationContext(), "凝视开始",
+                                Toast.LENGTH_SHORT).show();
+                    } else {
+                        Toast.makeText(getApplicationContext(), "请先开启摄像头",
+                                Toast.LENGTH_SHORT).show();
+                    }
+                    break;
+                case MotionEvent.ACTION_UP:
+                    if (isCameraStart) {
+                        Toast.makeText(getApplicationContext(), "凝视结束",
+                                Toast.LENGTH_SHORT).show();
+                    }
+                    break;
+                default:
+                    break;
+            }
+            return true;
+        }
+    }
 
     @Override
     protected void onDestroy() {

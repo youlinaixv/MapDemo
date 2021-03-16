@@ -1,9 +1,11 @@
 package com.example.mapdemo;
 
 import android.content.Context;
+import android.graphics.Point;
 import android.os.Build;
 import android.util.Log;
 import android.widget.SeekBar;
+import android.widget.ZoomControls;
 
 import androidx.annotation.RequiresApi;
 
@@ -61,6 +63,15 @@ public class BDMap {
         UiSettings mUiSettings = baiduMap.getUiSettings();
         mUiSettings.setTwoTouchClickZoomEnabled(false);
         mUiSettings.setDoubleClickZoomEnabled(false);
+
+        // 调整缩放按钮的显示位置
+        baiduMap.setOnMapLoadedCallback(new BaiduMap.OnMapLoadedCallback() {
+            @Override
+            public void onMapLoaded() {
+                mapView.setZoomControlsPosition(new Point(900, 1200));
+            }
+        });
+
     }
 
     public void setMarkerIcon() {
