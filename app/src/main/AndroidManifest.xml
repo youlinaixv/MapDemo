@@ -35,7 +35,7 @@
         <meta-data android:name="com.baidu.lbsapi.API_KEY"
             android:value="OqZG1B0K9tfV0XlyWSn6IT6rWI3oSLSw"></meta-data>
 
-        <activity android:name=".MainActivity">
+        <activity android:name=".MainActivity" android:hardwareAccelerated="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

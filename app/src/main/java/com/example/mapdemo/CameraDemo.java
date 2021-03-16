@@ -70,6 +70,10 @@ public class CameraDemo {
 
     }
 
+    public void closeCamera() {
+        deviceDestory();
+    }
+
     // 摄像头监听
     private CameraDevice.StateCallback stateCallback = new CameraDevice.StateCallback() {
         @Override

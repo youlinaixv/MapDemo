@@ -7,14 +7,17 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.content.pm.PackageManager;
 import android.graphics.SurfaceTexture;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.MotionEvent;
 import android.view.TextureView;
 import android.view.View;
 
+import android.widget.Button;
 import android.widget.Toast;
 
 
@@ -25,10 +28,12 @@ public class MainActivity extends AppCompatActivity {
 
 
     BDMap mBDMap;
-    //CameraDemo cameraDemo;
+    CameraDemo cameraDemo;
     static MainActivity mainActivity;
+    Button gaze;
+    boolean isCameraStart = false;
 
-    //@RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -36,19 +41,46 @@ public class MainActivity extends AppCompatActivity {
         mBDMap.initSDK(getApplicationContext());
 
         setContentView(R.layout.activity_main);
-        //cameraDemo = new CameraDemo();
+        cameraDemo = new CameraDemo();
 
+        gaze = (Button) findViewById(R.id.start_act);
 
-
+        // 按住按钮不松开的时间内的动作视为凝视手势
+        gaze.setOnTouchListener(new View.OnTouchListener() {
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                switch (event.getAction()) {
+                    case MotionEvent.ACTION_DOWN:
+                        if (isCameraStart) {
+                            Toast.makeText(getApplicationContext(), "凝视开始",
+                                    Toast.LENGTH_SHORT).show();
+                        } else {
+                            Toast.makeText(getApplicationContext(), "请先开启摄像头",
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                        break;
+                    case MotionEvent.ACTION_UP:
+                        if (isCameraStart) {
+                            Toast.makeText(getApplicationContext(), "凝视结束",
+                                    Toast.LENGTH_SHORT).show();
+                        }
+                        break;
+                    default:
+                        break;
+                }
+                return true;
+            }
+        });
         mainActivity = this;
 
         initBDMap();  // 初始化地图
 
         // 相机初始化
-        //initCamera();
+        initCamera();
 
         // 判断权限获取情况
         checkPermission();
+
 
 
     }
@@ -140,41 +172,53 @@ public class MainActivity extends AppCompatActivity {
         mBDMap.firstLocate = true;
     }
 
-    //@RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-    /*
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     public void initCamera() {
         cameraDemo.cameraView = (TextureView) findViewById(R.id.cameraView);
         Log.e("xxx", "init camera");
-        cameraDemo.cameraView.setSurfaceTextureListener(new TextureView.SurfaceTextureListener() {
-            @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-            @Override
-            public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface,
-                                                  int width, int height) {
-
-                cameraDemo.setUpCamera(getApplicationContext());
-                cameraDemo.openCamera();
-            }
-
-            @Override
-            public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture surface,
-                                                    int width, int height) {
-
-            }
-
-            @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-            @Override
-            public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture surface) {
-                cameraDemo.deviceDestory();
-                return false;
-            }
-
-            @Override
-            public void onSurfaceTextureUpdated(@NonNull SurfaceTexture surface) {
-
-            }
-        });
+        cameraDemo.cameraView.setSurfaceTextureListener(new MTextureListener());
     }
-     */
+
+    // 开启摄像头
+    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+    public void startCamera(View view) {
+        if (isCameraStart) {
+            cameraDemo.closeCamera();
+            isCameraStart = false;
+        } else {
+            cameraDemo.setUpCamera(getApplicationContext());
+            cameraDemo.openCamera();
+            isCameraStart = true;
+        }
+    }
+
+    // 定义TextureListener
+    private class MTextureListener implements TextureView.SurfaceTextureListener {
+        @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+        @Override
+        public void onSurfaceTextureAvailable(@NonNull SurfaceTexture surface,
+                                              int width, int height) {
+        }
+
+        @Override
+        public void onSurfaceTextureSizeChanged(@NonNull SurfaceTexture surface,
+                                                int width, int height) {
+
+        }
+
+        @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+        @Override
+        public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture surface) {
+            cameraDemo.deviceDestory();
+            return false;
+        }
+
+        @Override
+        public void onSurfaceTextureUpdated(@NonNull SurfaceTexture surface) {
+        }
+    }
+
+
     @Override
     protected void onDestroy() {
         super.onDestroy();
