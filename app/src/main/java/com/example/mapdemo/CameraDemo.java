@@ -1,7 +1,6 @@
 package com.example.mapdemo;
 
 import android.Manifest;
-import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.ImageFormat;
@@ -13,10 +12,12 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.media.ImageReader;
+import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
+import android.util.Log;
 import android.view.Surface;
 import android.view.TextureView;
 import android.widget.Toast;
@@ -25,7 +26,11 @@ import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
 
+import java.io.File;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
 public class CameraDemo {
@@ -37,6 +42,9 @@ public class CameraDemo {
     Handler childHandler, mainHandler;
     ImageReader imageReader;
     CameraCaptureSession cameraCaptureSession;
+    MediaRecorder mediaRecorder;
+    String videoPath;
+    boolean isRecording = false;
 
 
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
@@ -47,22 +55,55 @@ public class CameraDemo {
         childHandler = new Handler(handlerThread.getLooper());
         mainHandler = new Handler(Looper.getMainLooper());
         cameraId = "" + CameraCharacteristics.LENS_FACING_BACK;
-        imageReader = ImageReader.newInstance
-                (1080, 1920, ImageFormat.JPEG, 1);
+
         cameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
 
+    }
+    // 设置视频的存储路径
+    private String getVideoFilePath(Context context) {
+        final File dir = context.getExternalFilesDir(null);
+        return (dir == null ? "" : (dir.getAbsolutePath() + "/"))
+                + System.currentTimeMillis() + ".mp4";
+    }
+    // 初始化视频参数
+    private void setUpMediaRecorder() throws IOException {
+        mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+        mediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
+        mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+        if (videoPath == null || videoPath.isEmpty()) {
+            videoPath = getVideoFilePath(context);
+        }
+        mediaRecorder.setOutputFile(videoPath);
+        Log.e("xxx", "videoPath " + videoPath);
+        mediaRecorder.setVideoEncodingBitRate(10000000);
+        mediaRecorder.setVideoFrameRate(30);
+        mediaRecorder.setVideoSize(1920, 1080);
+        mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
+        mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+        // 调整视频方向
+        mediaRecorder.setOrientationHint(270);
+        mediaRecorder.prepare();
     }
 
     public void openCamera() {
         try {
-
+            List<String> permissionList = new ArrayList<String>();
             if (ActivityCompat.checkSelfPermission(context, Manifest.permission.CAMERA) !=
                     PackageManager.PERMISSION_GRANTED) {
-                String[] permissions = {Manifest.permission.CAMERA};
+                permissionList.add(Manifest.permission.CAMERA);
+            }
+            if (ActivityCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) !=
+                    PackageManager.PERMISSION_GRANTED) {
+                permissionList.add(Manifest.permission.RECORD_AUDIO);
+            }
+            if (!permissionList.isEmpty()) {
+                //有权限未通过
+                String[] permissions = permissionList.toArray(new String[permissionList.size()]);
+
                 ActivityCompat.requestPermissions(MainActivity.getMainActivity(),
                         permissions, 1);
-
             }
+
             cameraManager.openCamera(cameraId, stateCallback, mainHandler);
         } catch (CameraAccessException e) {
             e.printStackTrace();
@@ -71,7 +112,8 @@ public class CameraDemo {
     }
 
     public void closeCamera() {
-        deviceDestory();
+        closeRecord();
+        deviceDestroy();
     }
 
     // 摄像头监听
@@ -79,12 +121,12 @@ public class CameraDemo {
         @Override
         public void onOpened(@NonNull CameraDevice camera) {
             cameraDevice = camera;
-            takePreview();  // 开启预览
+            //takePreview();  // 开启预览
         }
 
         @Override
         public void onDisconnected(@NonNull CameraDevice camera) {
-            deviceDestory();
+            deviceDestroy();
         }
 
         @Override
@@ -93,36 +135,42 @@ public class CameraDemo {
         }
     };
 
-    private void takePreview() {
+    public void startRecord() {
         try {
-            final CaptureRequest.Builder previewRequestBuilder =
-                    cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-            SurfaceTexture texture = cameraView.getSurfaceTexture();
-            Surface surface = new Surface(texture);
-            previewRequestBuilder.addTarget(surface);
+            mediaRecorder = new MediaRecorder();
+            setUpMediaRecorder();
+            final CaptureRequest.Builder mPreviewBuilder =
+                    cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
+            List<Surface> surfaces = new ArrayList<>();
 
-            // 创建CameraCaptureSession，该对象负责管理处理预览请求和拍照请求
-            cameraDevice.createCaptureSession(Arrays.asList(surface, imageReader.getSurface()),
+            SurfaceTexture previewTexture = cameraView.getSurfaceTexture();
+            Surface previewSurface = new Surface(previewTexture);
+            surfaces.add(previewSurface);
+            mPreviewBuilder.addTarget(previewSurface);
+
+            Surface recorderSurface = mediaRecorder.getSurface();
+            surfaces.add(recorderSurface);
+            mPreviewBuilder.addTarget(recorderSurface);
+
+
+
+            // 创建CameraCaptureSession，该对象负责管理处理预览请求
+            cameraDevice.createCaptureSession(surfaces,
                     new CameraCaptureSession.StateCallback() {
                         @Override
                         public void onConfigured(@NonNull CameraCaptureSession session) {
                             if (cameraDevice == null)
                                 return;
                             cameraCaptureSession = session;
+
+                            CaptureRequest previewRequest = mPreviewBuilder.build();
                             try {
-                                // 自动对焦
-                                previewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,
-                                        CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-                                // 打开闪光灯
-                                previewRequestBuilder.set(CaptureRequest.CONTROL_AE_MODE,
-                                        CaptureRequest.CONTROL_AE_MODE_ON_AUTO_FLASH);
-                                // 显示预览
-                                CaptureRequest previewRequest = previewRequestBuilder.build();
-                                cameraCaptureSession.setRepeatingRequest
-                                        (previewRequest, null, childHandler);
+                                cameraCaptureSession.setRepeatingRequest(previewRequest, null, childHandler);
                             } catch (CameraAccessException e) {
                                 e.printStackTrace();
                             }
+                            isRecording = true;
+                            mediaRecorder.start();
 
                         }
 
@@ -133,13 +181,25 @@ public class CameraDemo {
                         }
                     }, childHandler);
 
-        } catch (CameraAccessException e) {
+        } catch (CameraAccessException | IOException e) {
             e.printStackTrace();
         }
     }
 
+    public void closeRecord() {
+        if (isRecording) {
+            mediaRecorder.stop();
+            mediaRecorder.reset();
+            mediaRecorder.release();
+            mediaRecorder = null;
+            isRecording = false;
+        }
+
+        videoPath = null;
+    }
+
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-    public void deviceDestory() {
+    public void deviceDestroy() {
         if (cameraDevice != null) {
             cameraDevice.close();
             cameraDevice = null;

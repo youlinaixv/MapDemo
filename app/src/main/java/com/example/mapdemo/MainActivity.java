@@ -21,6 +21,7 @@ import android.widget.Button;
 import android.widget.Toast;
 
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -152,9 +153,10 @@ public class MainActivity extends AppCompatActivity {
 
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     public void initCamera() {
-        cameraDemo.cameraView = (TextureView) findViewById(R.id.cameraView);
-        Log.e("xxx", "init camera");
+        cameraDemo.cameraView = findViewById(R.id.cameraView);
         cameraDemo.cameraView.setSurfaceTextureListener(new MTextureListener());
+        // 未开启摄像头时，TextureView不可见
+        cameraDemo.cameraView.setVisibility(View.INVISIBLE);
     }
 
     // 开启摄像头
@@ -165,12 +167,14 @@ public class MainActivity extends AppCompatActivity {
             cameraDemo.closeCamera();
             isCameraStart = false;
             gaze.setVisibility(View.INVISIBLE);
+            cameraDemo.cameraView.setVisibility(View.INVISIBLE);
         } else {
             // 开启摄像头
             cameraDemo.setUpCamera(getApplicationContext());
             cameraDemo.openCamera();
             isCameraStart = true;
             gaze.setVisibility(View.VISIBLE);
+            cameraDemo.cameraView.setVisibility(View.VISIBLE);
         }
     }
 
@@ -191,7 +195,7 @@ public class MainActivity extends AppCompatActivity {
         @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
         @Override
         public boolean onSurfaceTextureDestroyed(@NonNull SurfaceTexture surface) {
-            cameraDemo.deviceDestory();
+            cameraDemo.deviceDestroy();
             return false;
         }
 
@@ -201,6 +205,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private class MTouchListener implements View.OnTouchListener {
+        @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
         @Override
         public boolean onTouch(View v, MotionEvent event) {
             switch (event.getAction()) {
@@ -208,6 +213,7 @@ public class MainActivity extends AppCompatActivity {
                     if (isCameraStart) {
                         Toast.makeText(getApplicationContext(), "凝视开始",
                                 Toast.LENGTH_SHORT).show();
+                        cameraDemo.startRecord();
                     } else {
                         Toast.makeText(getApplicationContext(), "请先开启摄像头",
                                 Toast.LENGTH_SHORT).show();
@@ -217,6 +223,7 @@ public class MainActivity extends AppCompatActivity {
                     if (isCameraStart) {
                         Toast.makeText(getApplicationContext(), "凝视结束",
                                 Toast.LENGTH_SHORT).show();
+                        cameraDemo.closeRecord();
                     }
                     break;
                 default:
