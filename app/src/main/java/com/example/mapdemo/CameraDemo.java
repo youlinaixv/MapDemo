@@ -141,18 +141,11 @@ public class CameraDemo {
             setUpMediaRecorder();
             final CaptureRequest.Builder mPreviewBuilder =
                     cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
+
             List<Surface> surfaces = new ArrayList<>();
-
-            SurfaceTexture previewTexture = cameraView.getSurfaceTexture();
-            Surface previewSurface = new Surface(previewTexture);
-            surfaces.add(previewSurface);
-            mPreviewBuilder.addTarget(previewSurface);
-
             Surface recorderSurface = mediaRecorder.getSurface();
             surfaces.add(recorderSurface);
             mPreviewBuilder.addTarget(recorderSurface);
-
-
 
             // 创建CameraCaptureSession，该对象负责管理处理预览请求
             cameraDevice.createCaptureSession(surfaces,
@@ -162,13 +155,14 @@ public class CameraDemo {
                             if (cameraDevice == null)
                                 return;
                             cameraCaptureSession = session;
-
                             CaptureRequest previewRequest = mPreviewBuilder.build();
+
                             try {
                                 cameraCaptureSession.setRepeatingRequest(previewRequest, null, childHandler);
                             } catch (CameraAccessException e) {
                                 e.printStackTrace();
                             }
+
                             isRecording = true;
                             mediaRecorder.start();
 
