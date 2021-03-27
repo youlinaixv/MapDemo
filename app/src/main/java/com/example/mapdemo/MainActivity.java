@@ -164,12 +164,14 @@ public class MainActivity extends AppCompatActivity {
     public void startCamera(View view) {
         if (isCameraStart) {
             // 关闭摄像头
+            Toast.makeText(getApplicationContext(), "凝视模式关闭", Toast.LENGTH_SHORT).show();
             cameraDemo.closeCamera();
             isCameraStart = false;
             gaze.setVisibility(View.INVISIBLE);
             cameraDemo.cameraView.setVisibility(View.INVISIBLE);
         } else {
             // 开启摄像头
+            Toast.makeText(getApplicationContext(), "凝视模式开启", Toast.LENGTH_SHORT).show();
             cameraDemo.setUpCamera(getApplicationContext());
             cameraDemo.openCamera();
             isCameraStart = true;
@@ -211,9 +213,9 @@ public class MainActivity extends AppCompatActivity {
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
                     if (isCameraStart) {
+                        cameraDemo.startRecord();
                         Toast.makeText(getApplicationContext(), "凝视开始",
                                 Toast.LENGTH_SHORT).show();
-                        cameraDemo.startRecord();
                     } else {
                         Toast.makeText(getApplicationContext(), "请先开启摄像头",
                                 Toast.LENGTH_SHORT).show();
@@ -224,6 +226,8 @@ public class MainActivity extends AppCompatActivity {
                         Toast.makeText(getApplicationContext(), "凝视结束",
                                 Toast.LENGTH_SHORT).show();
                         cameraDemo.closeRecord();
+
+                        cameraDemo.startFaceDetect();
                     }
                     break;
                 default:

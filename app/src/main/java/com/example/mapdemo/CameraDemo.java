@@ -3,6 +3,7 @@ package com.example.mapdemo;
 import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.graphics.ImageFormat;
 import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
@@ -12,6 +13,7 @@ import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.media.ImageReader;
+import android.media.MediaMetadataRetriever;
 import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.Handler;
@@ -27,6 +29,8 @@ import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
 
 import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -40,10 +44,10 @@ public class CameraDemo {
     String cameraId;
     CameraDevice cameraDevice;
     Handler childHandler, mainHandler;
-    ImageReader imageReader;
     CameraCaptureSession cameraCaptureSession;
     MediaRecorder mediaRecorder;
     String videoPath;
+    String gazeVideoPath;  //当前凝视指令的路径
     boolean isRecording = false;
 
 
@@ -72,6 +76,7 @@ public class CameraDemo {
         mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
         if (videoPath == null || videoPath.isEmpty()) {
             videoPath = getVideoFilePath(context);
+            gazeVideoPath = videoPath;
         }
         mediaRecorder.setOutputFile(videoPath);
         Log.e("xxx", "videoPath " + videoPath);
@@ -83,6 +88,7 @@ public class CameraDemo {
         // 调整视频方向
         mediaRecorder.setOrientationHint(270);
         mediaRecorder.prepare();
+
     }
 
     public void openCamera() {
@@ -190,6 +196,70 @@ public class CameraDemo {
         }
 
         videoPath = null;
+    }
+
+    private void getFrames(List<Bitmap> videoFrames, String framesDirName) {
+        MediaMetadataRetriever mMMR = new MediaMetadataRetriever();
+        mMMR.setDataSource(gazeVideoPath);
+
+        // 获取视频总长度
+        String durationStr = mMMR.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+        long duration = Long.valueOf(durationStr);
+        Log.e("duration", durationStr);
+
+        // 获取帧率
+        float rate = 25;
+        long deltaOfFrames = (long) (1000.0 / rate);
+        String thePath = context.getExternalFilesDir(null) + "/frames/" + framesDirName;
+        new File(thePath).mkdirs();
+
+        Log.e("framePath", thePath);
+
+        for (int count = 0; count * deltaOfFrames < duration; count++) {
+            Log.e("xxxx", count + ";" + count * deltaOfFrames);
+            Bitmap frame = mMMR.getFrameAtTime
+                    (deltaOfFrames * count * 1000, MediaMetadataRetriever.OPTION_CLOSEST);
+            if (frame != null) {
+                videoFrames.add(frame);
+            } else {
+                break;
+            }
+
+            String name = thePath + "/" + count +".jpg";
+            File file = new File(name);
+            if(!file.exists()){
+                try {
+                    file.createNewFile();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            try {
+                FileOutputStream out = new FileOutputStream(file);
+                if (videoFrames.get(count).compress(Bitmap.CompressFormat.JPEG, 100, out)) {
+                    out.flush();
+                    out.close();
+                }
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+    public void startFaceDetect() {
+        List<Bitmap> videoFrames = new ArrayList<>();
+        String framesDirName = System.currentTimeMillis() + "";
+        new Thread() {
+            @Override
+            public void run() {
+                super.run();
+                getFrames(videoFrames, framesDirName);
+
+            }
+        }.start();
+
     }
 
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
