@@ -4,15 +4,12 @@ import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
-import android.graphics.ImageFormat;
-import android.graphics.SurfaceTexture;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
-import android.media.ImageReader;
 import android.media.MediaMetadataRetriever;
 import android.media.MediaRecorder;
 import android.os.Build;
@@ -49,6 +46,8 @@ public class CameraDemo {
     String videoPath;
     String gazeVideoPath;  //当前凝视指令的路径
     boolean isRecording = false;
+    FaceDetect faceDetect;
+    int MASK_SIZE = 25; // 要得到的脸部网格矩阵的尺寸
 
 
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
@@ -61,6 +60,7 @@ public class CameraDemo {
         cameraId = "" + CameraCharacteristics.LENS_FACING_BACK;
 
         cameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
+        faceDetect = new FaceDetect(con);
 
     }
     // 设置视频的存储路径
@@ -198,6 +198,7 @@ public class CameraDemo {
         videoPath = null;
     }
 
+    // 将视频转化为帧
     private void getFrames(List<Bitmap> videoFrames, String framesDirName) {
         MediaMetadataRetriever mMMR = new MediaMetadataRetriever();
         mMMR.setDataSource(gazeVideoPath);
@@ -225,6 +226,16 @@ public class CameraDemo {
                 break;
             }
 
+            // 对图片进行面部检测
+            Bitmap bitmapFace = null;
+            Bitmap bitmapLeftEye = null;
+            Bitmap bitmapRightEye = null;
+            int[][] arrMask = new int[MASK_SIZE][MASK_SIZE];
+
+            faceDetect.detect(frame, bitmapFace, bitmapLeftEye, bitmapRightEye, arrMask);
+
+
+            /*
             String name = thePath + "/" + count +".jpg";
             File file = new File(name);
             if(!file.exists()){
@@ -234,6 +245,7 @@ public class CameraDemo {
                     e.printStackTrace();
                 }
             }
+
             try {
                 FileOutputStream out = new FileOutputStream(file);
                 if (videoFrames.get(count).compress(Bitmap.CompressFormat.JPEG, 100, out)) {
@@ -244,19 +256,19 @@ public class CameraDemo {
                 e.printStackTrace();
             } catch (IOException e) {
                 e.printStackTrace();
-            }
+            }*/
         }
     }
 
     public void startFaceDetect() {
         List<Bitmap> videoFrames = new ArrayList<>();
+
         String framesDirName = System.currentTimeMillis() + "";
         new Thread() {
             @Override
             public void run() {
                 super.run();
                 getFrames(videoFrames, framesDirName);
-
             }
         }.start();
 

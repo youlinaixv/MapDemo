@@ -7,12 +7,10 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import android.Manifest;
-import android.annotation.SuppressLint;
 import android.content.pm.PackageManager;
 import android.graphics.SurfaceTexture;
 import android.os.Build;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.MotionEvent;
 import android.view.TextureView;
 import android.view.View;
@@ -20,8 +18,6 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 
-
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
