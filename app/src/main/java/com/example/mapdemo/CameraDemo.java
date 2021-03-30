@@ -227,36 +227,38 @@ public class CameraDemo {
             }
 
             // 对图片进行面部检测
-            Bitmap bitmapFace = null;
-            Bitmap bitmapLeftEye = null;
-            Bitmap bitmapRightEye = null;
             int[][] arrMask = new int[MASK_SIZE][MASK_SIZE];
+            Bitmap[] bitmapArr = null;
+            bitmapArr = faceDetect.detect(frame, arrMask);
 
-            faceDetect.detect(frame, bitmapFace, bitmapLeftEye, bitmapRightEye, arrMask);
-
-
-            /*
-            String name = thePath + "/" + count +".jpg";
-            File file = new File(name);
-            if(!file.exists()){
-                try {
-                    file.createNewFile();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
+            if (bitmapArr == null) {
+                Log.e("null", "nono");
+                continue;
             }
 
-            try {
-                FileOutputStream out = new FileOutputStream(file);
-                if (videoFrames.get(count).compress(Bitmap.CompressFormat.JPEG, 100, out)) {
-                    out.flush();
-                    out.close();
-                }
-            } catch (FileNotFoundException e) {
-                e.printStackTrace();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }*/
+            // 将得到的bitmap储存起来
+            String name = thePath + "/" + count;
+            new File(name).mkdir();
+            generatePic(bitmapArr[0], name, "face");
+            generatePic(bitmapArr[1], name, "lefteye");
+            generatePic(bitmapArr[2], name, "righteye");
+
+        }
+    }
+
+    private void generatePic(Bitmap bitmap, String thePath, String fileName) {
+        String name = thePath + "/" +fileName + ".jpg";
+        File file = new File(name);
+        try {
+            FileOutputStream out = new FileOutputStream(file);
+            if (bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)) {
+                out.flush();
+                out.close();
+            }
+        } catch (FileNotFoundException e) {
+            e.printStackTrace();
+        } catch (IOException e) {
+            e.printStackTrace();
         }
     }
 

@@ -6,7 +6,7 @@ import android.graphics.Color;
 import android.graphics.Matrix;
 import android.graphics.PointF;
 import android.media.FaceDetector;
-import android.widget.Toast;
+import android.util.Log;
 
 public class FaceDetect {
     Context context;
@@ -36,8 +36,8 @@ public class FaceDetect {
     }
 
     // 面部检测
-    public void detect(Bitmap bitmap, Bitmap bitmapFace, Bitmap bitmapLeftEye,
-                       Bitmap bitmapRightEye, int[][] arrMask) {
+    public Bitmap[] detect(Bitmap bitmap, int[][] arrMask) {
+        Bitmap[] bitmapArr = new Bitmap[3]; // 存储要得到的图像
         // 需要转化为rgb565
         bitmap = bitmap.copy(Bitmap.Config.RGB_565, true);
 
@@ -47,14 +47,23 @@ public class FaceDetect {
         FaceDetector.Face[] faces = new FaceDetector.Face[MAX_FACES];
         int realFaceNum = faceDetector.findFaces(bitmap, faces);
         if (realFaceNum <= 0) {
-            Toast.makeText(context, "没有检测到人脸", Toast.LENGTH_SHORT).show();
-            return;
+            Log.e("detect", "没有检测到人脸");
+            return null;
         }
-        faceProcess(faces, realFaceNum, bitmap, bitmapFace, bitmapLeftEye, bitmapRightEye, arrMask);
+
+        faceProcess(faces, realFaceNum, bitmap, bitmapArr, arrMask);
+        return bitmapArr;
     }
 
     // 对图像进行处理：裁剪+缩放
     private Bitmap imageProcess(Bitmap bitmap, int rectX, int rectY, int length, int destLength) {
+        int w = bitmap.getWidth();
+        int h = bitmap.getHeight();
+        // 当截取的正方形部分超出原图像边界时，不进行预测，改为提醒用户调整姿势
+        if (rectX + length > w || rectX + length > h || rectY + length > w || rectY + length > h) {
+            Log.e("clip fail", "请调整姿势以尽量露出全脸");
+            return null;
+        }
         Bitmap bitmapClip = Bitmap.createBitmap(bitmap, rectX, rectY, length, length,
                 null, false);
         Bitmap bitmapScale = imageScale(bitmapClip, destLength, destLength);
@@ -89,8 +98,8 @@ public class FaceDetect {
 
     // 根据面部检测的结果处理图片，获得脸部、左右眼和脸部网格
     private void faceProcess(FaceDetector.Face[] faces, int realFaceNum, Bitmap bitmap,
-                             Bitmap bitmapFace, Bitmap bitmapLeftEye, Bitmap bitmapRightEye,
-                             int[][] arrMask) {
+            Bitmap[] bitmapArr, int[][] arrMask) {
+
         float eyesDistance = 0f;//两眼间距
         FaceDetector.Face face = faces[0]; // 暂时假定每次都只检测到一张脸
         if(face != null){
@@ -100,19 +109,28 @@ public class FaceDetect {
 
 
 
-            bitmapFace = imageProcess(bitmap, (int) (pointF.x - eyesDistance),
+            Bitmap bitmapFace = imageProcess(bitmap, (int) (pointF.x - eyesDistance),
                     (int) (pointF.y - eyesDistance * 0.5), (int) (eyesDistance * 2), PIC_SIZE);
 
-            bitmapLeftEye = imageProcess(bitmap,
+            Bitmap bitmapLeftEye = imageProcess(bitmap,
                     (int) (pointF.x - eyesDistance * (EYE_BOUND + 0.5)),
                     (int) (pointF.y - eyesDistance * EYE_BOUND),
                     (int) (eyesDistance * 2 * EYE_BOUND), PIC_SIZE);
 
-            bitmapRightEye = imageProcess(bitmap,
+            Bitmap bitmapRightEye = imageProcess(bitmap,
                     (int) (pointF.x + eyesDistance * (0.5 - EYE_BOUND)),
                     (int) (pointF.y - eyesDistance * EYE_BOUND),
                     (int) (eyesDistance * 2 * EYE_BOUND), PIC_SIZE);
 
+            bitmapArr[0] = bitmapFace;
+            bitmapArr[1] = bitmapLeftEye;
+            bitmapArr[2] = bitmapRightEye;
+
+            if (bitmapArr[0] == null || bitmapArr[1] == null || bitmapArr[2] == null) {
+                bitmapArr = null;
+            }
+
+            // 获取脸部网格
             int edge = (int) (eyesDistance * 2);
             int[] pixels = new int[edge * edge];
             for (int j = 0; j < edge * edge; j++) {
