@@ -25,13 +25,17 @@ import androidx.annotation.NonNull;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.ActivityCompat;
 
+import org.tensorflow.lite.Interpreter;
+
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
 public class CameraDemo {
@@ -199,6 +203,7 @@ public class CameraDemo {
     }
 
     // 将视频转化为帧
+    @RequiresApi(api = Build.VERSION_CODES.N)
     private void getFrames(List<Bitmap> videoFrames, String framesDirName) {
         MediaMetadataRetriever mMMR = new MediaMetadataRetriever();
         mMMR.setDataSource(gazeVideoPath);
@@ -227,16 +232,35 @@ public class CameraDemo {
             }
 
             // 对图片进行面部检测
-            int[][] arrMask = new int[MASK_SIZE][MASK_SIZE];
+            float[][] arrMask = new float[1][MASK_SIZE * MASK_SIZE];
             Bitmap[] bitmapArr = null;
             bitmapArr = faceDetect.detect(frame, arrMask);
 
-            if (bitmapArr == null) {
-                Log.e("null", "nono");
+            if (bitmapArr[0] == null || bitmapArr[1] == null || bitmapArr[2] == null) {
+                Log.e("BitmapArray", "null");
                 continue;
             }
 
+            Tracker mTracker = Tracker.newInstance(context);
+
+            Object[] inputs = new Object[4];
+            inputs[0] = bitmap2Arr(bitmapArr[1]); // 左眼
+            inputs[1] = bitmap2Arr(bitmapArr[2]); // 右眼
+            inputs[2] = bitmap2Arr(bitmapArr[0]); // 脸
+            inputs[3] = arrMask;
+
+            float[][] output = new float[1][2];
+            Map<Integer, Object> outputs = new HashMap();
+            outputs.put(0, output);
+            Interpreter interpreter = mTracker.get();
+            interpreter.allocateTensors();
+            interpreter.runForMultipleInputsOutputs(inputs, outputs);
+
+            Log.e("xxx", output[0][0] + "");
+            Log.e("xxx", output[0][1] + "");
+
             // 将得到的bitmap储存起来
+
             String name = thePath + "/" + count;
             new File(name).mkdir();
             generatePic(bitmapArr[0], name, "face");
@@ -244,6 +268,32 @@ public class CameraDemo {
             generatePic(bitmapArr[2], name, "righteye");
 
         }
+    }
+
+    public float[][][][] bitmap2Arr(Bitmap bitmap) {
+        float[][][][] result = new float[1][64][64][3];
+
+        // 将bitmap转成rgb形式
+        int width = bitmap.getWidth();
+        int height = bitmap.getHeight();
+        int[] intValues = new int[width * height];
+        bitmap.getPixels(intValues, 0, width, 0, 0, width, height);
+        for (int i = 0; i < intValues.length; i++) {
+            final int value = intValues[i];
+            int row = i / width;
+            int col = i % width;
+            result[0][row][col][0] = byte2Float((byte) ((value >> 16) & 0xFF)) / 255; // R
+            result[0][row][col][1] = byte2Float((byte) ((value >> 8) & 0xFF)) / 255; // G
+            result[0][row][col][2] = byte2Float((byte) (value & 0xFF)) / 255; // B
+        }
+        return result;
+    }
+
+    private float byte2Float(byte num) {
+        int heightBit = (int) ((num >> 4) & 0x0F);
+        int lowBit = (int) (0x0F & num);
+        float result = heightBit * 16 + lowBit;
+        return result;
     }
 
     private void generatePic(Bitmap bitmap, String thePath, String fileName) {
@@ -267,6 +317,7 @@ public class CameraDemo {
 
         String framesDirName = System.currentTimeMillis() + "";
         new Thread() {
+            @RequiresApi(api = Build.VERSION_CODES.N)
             @Override
             public void run() {
                 super.run();

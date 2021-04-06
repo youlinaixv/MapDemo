@@ -36,7 +36,7 @@ public class FaceDetect {
     }
 
     // 面部检测
-    public Bitmap[] detect(Bitmap bitmap, int[][] arrMask) {
+    public Bitmap[] detect(Bitmap bitmap, float[][] arrMask) {
         Bitmap[] bitmapArr = new Bitmap[3]; // 存储要得到的图像
         // 需要转化为rgb565
         bitmap = bitmap.copy(Bitmap.Config.RGB_565, true);
@@ -60,7 +60,8 @@ public class FaceDetect {
         int w = bitmap.getWidth();
         int h = bitmap.getHeight();
         // 当截取的正方形部分超出原图像边界时，不进行预测，改为提醒用户调整姿势
-        if (rectX + length > w || rectX + length > h || rectY + length > w || rectY + length > h) {
+
+        if (rectX + length > w || rectY + length > h) {
             Log.e("clip fail", "请调整姿势以尽量露出全脸");
             return null;
         }
@@ -83,22 +84,23 @@ public class FaceDetect {
     }
 
     // 根据mask图像的像素值为arrMask矩阵赋值
-    private void zeroOrOne(Bitmap bitmap, int[][] arrMask) {
+    private void zeroOrOne(Bitmap bitmap, float[][] arrMask) {
         int edge = bitmap.getWidth();
-        for (int i = 0; i < edge; i++) {
-            for (int j = 0; j < edge; j++) {
-                if (bitmap.getPixel(i, j) != Color.WHITE) {
-                    arrMask[i][j] = 1;
-                } else {
-                    arrMask[i][j] = 0;
-                }
+        for (int i = 0; i < edge * edge; i++) {
+            int row = i / edge;
+            int col = i % edge;
+            if (bitmap.getPixel(row, col) != Color.WHITE) {
+                arrMask[0][i] = 1;
+            } else {
+                arrMask[0][i] = 0;
             }
+
         }
     }
 
     // 根据面部检测的结果处理图片，获得脸部、左右眼和脸部网格
     private void faceProcess(FaceDetector.Face[] faces, int realFaceNum, Bitmap bitmap,
-            Bitmap[] bitmapArr, int[][] arrMask) {
+            Bitmap[] bitmapArr, float[][] arrMask) {
 
         float eyesDistance = 0f;//两眼间距
         FaceDetector.Face face = faces[0]; // 暂时假定每次都只检测到一张脸
@@ -122,13 +124,26 @@ public class FaceDetect {
                     (int) (pointF.y - eyesDistance * EYE_BOUND),
                     (int) (eyesDistance * 2 * EYE_BOUND), PIC_SIZE);
 
+            if (bitmapFace == null || bitmapLeftEye == null || bitmapRightEye == null) {
+                String str = "";
+                if (bitmapFace == null) {
+                    str += "face,";
+                }
+                if (bitmapLeftEye == null) {
+                    str += "lefteye,";
+                }
+                if (bitmapRightEye == null) {
+                    str += "righteye,";
+                }
+                Log.e("bitmapNull", str);
+                return;
+            }
+
             bitmapArr[0] = bitmapFace;
             bitmapArr[1] = bitmapLeftEye;
             bitmapArr[2] = bitmapRightEye;
 
-            if (bitmapArr[0] == null || bitmapArr[1] == null || bitmapArr[2] == null) {
-                bitmapArr = null;
-            }
+
 
             // 获取脸部网格
             int edge = (int) (eyesDistance * 2);
