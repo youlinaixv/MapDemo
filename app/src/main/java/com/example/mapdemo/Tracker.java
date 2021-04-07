@@ -19,12 +19,8 @@ public class Tracker {
     Interpreter mInterpreter;
     private static Tracker instance;
 
-    public static Tracker newInstance(Context context) {
+    public Tracker(Context context) {
         mContext = context;
-        if (instance == null) {
-            instance = new Tracker();
-        }
-        return instance;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.N)

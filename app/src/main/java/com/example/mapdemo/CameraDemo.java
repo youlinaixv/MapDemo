@@ -36,6 +36,10 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
 public class CameraDemo {
@@ -220,53 +224,78 @@ public class CameraDemo {
         new File(thePath).mkdirs();
 
         Log.e("framePath", thePath);
-
+        // 使用多线程处理每一帧
+        final int TOTAL_THREADS = (int) Math.ceil(duration / deltaOfFrames) / 4;
+        Map<Integer, float[]> treeMap = new TreeMap<>();
+        ExecutorService taskExecutor  = Executors.newFixedThreadPool(TOTAL_THREADS);
+        final CountDownLatch latch = new CountDownLatch((int) Math.ceil(duration / deltaOfFrames));
         for (int count = 0; count * deltaOfFrames < duration; count++) {
             Log.e("xxxx", count + ";" + count * deltaOfFrames);
-            Bitmap frame = mMMR.getFrameAtTime
-                    (deltaOfFrames * count * 1000, MediaMetadataRetriever.OPTION_CLOSEST);
-            if (frame != null) {
-                videoFrames.add(frame);
-            } else {
-                break;
-            }
+            final int num = count;
+            Runnable run = () -> {
 
-            // 对图片进行面部检测
-            float[][] arrMask = new float[1][MASK_SIZE * MASK_SIZE];
-            Bitmap[] bitmapArr = null;
-            bitmapArr = faceDetect.detect(frame, arrMask);
+                Bitmap frame = mMMR.getFrameAtTime(deltaOfFrames * num * 1000,
+                        MediaMetadataRetriever.OPTION_CLOSEST);
+                if (frame != null) {
+                    videoFrames.add(frame);
+                } else {
+                    Log.e("Frame", "null");
+                    latch.countDown();
+                    return;
+                }
 
-            if (bitmapArr[0] == null || bitmapArr[1] == null || bitmapArr[2] == null) {
-                Log.e("BitmapArray", "null");
-                continue;
-            }
+                // 对图片进行面部检测
+                float[][] arrMask = new float[1][MASK_SIZE * MASK_SIZE];
+                Bitmap[] bitmapArr = null;
+                bitmapArr = faceDetect.detect(frame, arrMask);
 
-            Tracker mTracker = Tracker.newInstance(context);
+                if (bitmapArr[0] == null || bitmapArr[1] == null || bitmapArr[2] == null) {
+                    Log.e("BitmapArray", "null");
+                    latch.countDown();
+                    return;
+                }
 
-            Object[] inputs = new Object[4];
-            inputs[0] = bitmap2Arr(bitmapArr[1]); // 左眼
-            inputs[1] = bitmap2Arr(bitmapArr[2]); // 右眼
-            inputs[2] = bitmap2Arr(bitmapArr[0]); // 脸
-            inputs[3] = arrMask;
+                // 使用iTracker模型进行凝视点预测
+                Tracker mTracker = new Tracker(context);
+                Interpreter interpreter = mTracker.get();
+                Object[] inputs = new Object[4];
+                inputs[0] = bitmap2Arr(bitmapArr[1]); // 左眼
+                inputs[1] = bitmap2Arr(bitmapArr[2]); // 右眼
+                inputs[2] = bitmap2Arr(bitmapArr[0]); // 脸
+                inputs[3] = arrMask;
+                float[][] output = new float[1][2];
+                Map<Integer, Object> outputs = new HashMap();
+                outputs.put(0, output);
 
-            float[][] output = new float[1][2];
-            Map<Integer, Object> outputs = new HashMap();
-            outputs.put(0, output);
-            Interpreter interpreter = mTracker.get();
-            interpreter.allocateTensors();
-            interpreter.runForMultipleInputsOutputs(inputs, outputs);
+                interpreter.allocateTensors();
+                interpreter.runForMultipleInputsOutputs(inputs, outputs);
+                treeMap.put(num, new float[]{output[0][0], output[0][1]});
 
-            Log.e("xxx", output[0][0] + "");
-            Log.e("xxx", output[0][1] + "");
+                latch.countDown();
 
+            };
+            taskExecutor.execute(run);
             // 将得到的bitmap储存起来
-
+            /*
             String name = thePath + "/" + count;
             new File(name).mkdir();
             generatePic(bitmapArr[0], name, "face");
             generatePic(bitmapArr[1], name, "lefteye");
-            generatePic(bitmapArr[2], name, "righteye");
+            generatePic(bitmapArr[2], name, "righteye");*/
 
+        }
+        try {
+            //等待所有线程执行完毕
+            latch.await();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        taskExecutor.shutdown();//关闭线程池
+        Log.e("Thread", "task completed");
+
+        for (Map.Entry<Integer, float[]> entry: treeMap.entrySet()) {
+            Log.e("posInfo", entry.getKey() + " " + entry.getValue()[0] + " "
+            + entry.getValue()[1]);
         }
     }
 
