@@ -118,6 +118,14 @@ public class BDMap {
         });
     }
 
+    public void zoomMap(float level) {
+        zoomLevel = baiduMap.getMapStatus().zoom;
+        baiduMap.setMapStatus(MapStatusUpdateFactory.newLatLng(zoomCenter));
+        float finalLevel = zoomLevel + level;
+        MapStatusUpdate update = MapStatusUpdateFactory.zoomTo(finalLevel);
+        baiduMap.animateMapStatus(update);
+    }
+
     public void zoomChange() {
 
         zoomBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {

@@ -56,11 +56,14 @@ public class CameraDemo {
     boolean isRecording = false;
     FaceDetect faceDetect;
     int MASK_SIZE = 25; // 要得到的脸部网格矩阵的尺寸
+    BDMap bdMap = null;
+
 
 
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-    public void setUpCamera(Context con) {
+    public void setUpCamera(Context con, BDMap mBDMap) {
         context = con;
+        bdMap = mBDMap;
         HandlerThread handlerThread = new HandlerThread("Camera2");
         handlerThread.start();
         childHandler = new Handler(handlerThread.getLooper());
@@ -196,9 +199,14 @@ public class CameraDemo {
 
     public void closeRecord() {
         if (isRecording) {
-            mediaRecorder.stop();
-            mediaRecorder.reset();
-            mediaRecorder.release();
+            try {
+                mediaRecorder.stop();
+                mediaRecorder.reset();
+                mediaRecorder.release();
+            } catch (RuntimeException e) {
+                e.printStackTrace();
+            }
+
             mediaRecorder = null;
             isRecording = false;
         }
@@ -214,23 +222,35 @@ public class CameraDemo {
 
         // 获取视频总长度
         String durationStr = mMMR.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+        if (durationStr == null) {
+            Log.e("duration", "the gaze time is too short");
+            removeGazeFile();
+            return;
+        }
         long duration = Long.valueOf(durationStr);
         Log.e("duration", durationStr);
 
-        // 获取帧率
+        // 帧率
         float rate = 25;
-        long deltaOfFrames = (long) (1000.0 / rate);
+        long deltaOfFrames = (long) (1000.0 / rate * 2);
+        /*
         String thePath = context.getExternalFilesDir(null) + "/frames/" + framesDirName;
         new File(thePath).mkdirs();
-
         Log.e("framePath", thePath);
-        // 使用多线程处理每一帧
-        final int TOTAL_THREADS = (int) Math.ceil(duration / deltaOfFrames) / 4;
+         */
+        // 使用多线程处理每一帧,不选取0s对应的帧,即防止由于用户在凝视开始时刻的波动导致误差，将凝视点的起始点删除
+        int framesCount = (int) Math.ceil(duration / deltaOfFrames) - 1;
+        final int TOTAL_THREADS = framesCount / 4;
+        if (TOTAL_THREADS <= 1) {
+            Log.e("GetFrames", "the num of frames is too few to predict");
+            removeGazeFile();
+            return;
+        }
         Map<Integer, float[]> treeMap = new TreeMap<>();
         ExecutorService taskExecutor  = Executors.newFixedThreadPool(TOTAL_THREADS);
-        final CountDownLatch latch = new CountDownLatch((int) Math.ceil(duration / deltaOfFrames));
-        for (int count = 0; count * deltaOfFrames < duration; count++) {
-            Log.e("xxxx", count + ";" + count * deltaOfFrames);
+        final CountDownLatch latch = new CountDownLatch(framesCount);
+        for (int count = 1; count * deltaOfFrames < duration; count++) {
+            Log.e("xxxx", count - 1 + ";" + count * deltaOfFrames);
             final int num = count;
             Runnable run = () -> {
 
@@ -269,7 +289,7 @@ public class CameraDemo {
 
                 interpreter.allocateTensors();
                 interpreter.runForMultipleInputsOutputs(inputs, outputs);
-                treeMap.put(num, new float[]{output[0][0], output[0][1]});
+                treeMap.put(num - 1, new float[]{output[0][0], output[0][1]});
 
                 latch.countDown();
 
@@ -293,10 +313,27 @@ public class CameraDemo {
         taskExecutor.shutdown();//关闭线程池
         Log.e("Thread", "task completed");
 
+        // 删除生成的视频文件
+        removeGazeFile();
+
         for (Map.Entry<Integer, float[]> entry: treeMap.entrySet()) {
             Log.e("posInfo", entry.getKey() + " " + entry.getValue()[0] + " "
             + entry.getValue()[1]);
         }
+        PositionProcess pp = new PositionProcess();
+        float level = pp.getDistance(treeMap);
+        Log.e("Result", level + "");
+        bdMap.zoomMap(level);
+    }
+
+    private boolean removeGazeFile() {
+        File gazeVideo = new File(gazeVideoPath);
+        if (gazeVideo != null && gazeVideo.exists() && !gazeVideo.isDirectory()){
+            Log.e("deleteVideo", "succeed");
+            gazeVideo.delete();
+            return true;
+        }
+        return false;
     }
 
     public float[][][][] bitmap2Arr(Bitmap bitmap) {

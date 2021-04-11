@@ -48,7 +48,7 @@ public class FaceDetect {
         int realFaceNum = faceDetector.findFaces(bitmap, faces);
         if (realFaceNum <= 0) {
             Log.e("detect", "没有检测到人脸");
-            return null;
+            return bitmapArr;
         }
 
         faceProcess(faces, realFaceNum, bitmap, bitmapArr, arrMask);

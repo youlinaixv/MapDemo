@@ -7,6 +7,7 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.content.pm.PackageManager;
 import android.graphics.SurfaceTexture;
 import android.os.Build;
@@ -30,6 +31,7 @@ public class MainActivity extends AppCompatActivity {
     Button gaze;
     boolean isCameraStart = false;
 
+    @SuppressLint("ClickableViewAccessibility")
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -135,10 +137,11 @@ public class MainActivity extends AppCompatActivity {
 
         // Marker点击监听
         mBDMap.markClick();
+        /*
         // 缩放控制
         mBDMap.zoomBar = findViewById(R.id.zoom_bar);
         mBDMap.zoomChange();
-
+        */
     }
 
 
@@ -168,7 +171,7 @@ public class MainActivity extends AppCompatActivity {
         } else {
             // 开启摄像头
             Toast.makeText(getApplicationContext(), "凝视模式开启", Toast.LENGTH_SHORT).show();
-            cameraDemo.setUpCamera(getApplicationContext());
+            cameraDemo.setUpCamera(getApplicationContext(), mBDMap);
             cameraDemo.openCamera();
             isCameraStart = true;
             gaze.setVisibility(View.VISIBLE);
@@ -209,9 +212,12 @@ public class MainActivity extends AppCompatActivity {
             switch (event.getAction()) {
                 case MotionEvent.ACTION_DOWN:
                     if (isCameraStart) {
+                        gaze.setBackgroundResource(R.drawable.btn_pressed);
                         cameraDemo.startRecord();
+                        /*
                         Toast.makeText(getApplicationContext(), "凝视开始",
                                 Toast.LENGTH_SHORT).show();
+                        */
                     } else {
                         Toast.makeText(getApplicationContext(), "请先开启摄像头",
                                 Toast.LENGTH_SHORT).show();
@@ -219,8 +225,11 @@ public class MainActivity extends AppCompatActivity {
                     break;
                 case MotionEvent.ACTION_UP:
                     if (isCameraStart) {
+                        gaze.setBackgroundResource(R.drawable.btn_normal);
+                        /*
                         Toast.makeText(getApplicationContext(), "凝视结束",
                                 Toast.LENGTH_SHORT).show();
+                        */
                         cameraDemo.closeRecord();
 
                         cameraDemo.startFaceDetect();
