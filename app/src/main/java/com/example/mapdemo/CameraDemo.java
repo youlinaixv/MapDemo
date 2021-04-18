@@ -4,14 +4,19 @@ import android.Manifest;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
+import android.graphics.ImageFormat;
+import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
-import android.media.MediaMetadataRetriever;
-import android.media.MediaRecorder;
+import android.media.Image;
+import android.media.ImageReader;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -19,6 +24,7 @@ import android.os.Looper;
 import android.util.Log;
 import android.view.Surface;
 import android.view.TextureView;
+import android.widget.ImageView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
@@ -31,8 +37,8 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -50,15 +56,14 @@ public class CameraDemo {
     CameraDevice cameraDevice;
     Handler childHandler, mainHandler;
     CameraCaptureSession cameraCaptureSession;
-    MediaRecorder mediaRecorder;
-    String videoPath;
-    String gazeVideoPath;  //当前凝视指令的路径
-    boolean isRecording = false;
+    ImageReader imageReader;
+    ImageView iv_show;
+    boolean inGazing = false;
+    List<byte[]> frames;
+
     FaceDetect faceDetect;
     int MASK_SIZE = 25; // 要得到的脸部网格矩阵的尺寸
     BDMap bdMap = null;
-
-
 
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
     public void setUpCamera(Context con, BDMap mBDMap) {
@@ -69,36 +74,10 @@ public class CameraDemo {
         childHandler = new Handler(handlerThread.getLooper());
         mainHandler = new Handler(Looper.getMainLooper());
         cameraId = "" + CameraCharacteristics.LENS_FACING_BACK;
+        frames = new ArrayList<>();
 
         cameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
         faceDetect = new FaceDetect(con);
-
-    }
-    // 设置视频的存储路径
-    private String getVideoFilePath(Context context) {
-        final File dir = context.getExternalFilesDir(null);
-        return (dir == null ? "" : (dir.getAbsolutePath() + "/"))
-                + System.currentTimeMillis() + ".mp4";
-    }
-    // 初始化视频参数
-    private void setUpMediaRecorder() throws IOException {
-        mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-        mediaRecorder.setVideoSource(MediaRecorder.VideoSource.SURFACE);
-        mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-        if (videoPath == null || videoPath.isEmpty()) {
-            videoPath = getVideoFilePath(context);
-            gazeVideoPath = videoPath;
-        }
-        mediaRecorder.setOutputFile(videoPath);
-        Log.e("xxx", "videoPath " + videoPath);
-        mediaRecorder.setVideoEncodingBitRate(10000000);
-        mediaRecorder.setVideoFrameRate(30);
-        mediaRecorder.setVideoSize(1920, 1080);
-        mediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
-        mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
-        // 调整视频方向
-        mediaRecorder.setOrientationHint(270);
-        mediaRecorder.prepare();
 
     }
 
@@ -108,10 +87,6 @@ public class CameraDemo {
             if (ActivityCompat.checkSelfPermission(context, Manifest.permission.CAMERA) !=
                     PackageManager.PERMISSION_GRANTED) {
                 permissionList.add(Manifest.permission.CAMERA);
-            }
-            if (ActivityCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) !=
-                    PackageManager.PERMISSION_GRANTED) {
-                permissionList.add(Manifest.permission.RECORD_AUDIO);
             }
             if (!permissionList.isEmpty()) {
                 //有权限未通过
@@ -152,17 +127,36 @@ public class CameraDemo {
         }
     };
 
+    private void initImageReader() {
+        imageReader = ImageReader.newInstance(1920, 1080, ImageFormat.JPEG, 40);
+        //处理拍照得到的临时照片
+        imageReader.setOnImageAvailableListener(reader -> {
+            // 拿到拍照照片数据
+            Image image = reader.acquireLatestImage();
+            if (image != null) {
+                ByteBuffer buffer = image.getPlanes()[0].getBuffer();
+                byte[] bytes = new byte[buffer.capacity()];
+                buffer.get(bytes);//由缓冲区存入字节数组
+                image.close();
+                if (inGazing) {
+                    frames.add(bytes);
+                }
+            }
+        }, mainHandler);
+    }
+
     public void startRecord() {
+        inGazing = true;
+        frames.clear();
+        initImageReader();
         try {
-            mediaRecorder = new MediaRecorder();
-            setUpMediaRecorder();
             final CaptureRequest.Builder mPreviewBuilder =
-                    cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_RECORD);
+                    cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
 
             List<Surface> surfaces = new ArrayList<>();
-            Surface recorderSurface = mediaRecorder.getSurface();
-            surfaces.add(recorderSurface);
-            mPreviewBuilder.addTarget(recorderSurface);
+            Surface mSurface = imageReader.getSurface();
+            surfaces.add(mSurface);
+            mPreviewBuilder.addTarget(mSurface);
 
             // 创建CameraCaptureSession，该对象负责管理处理预览请求
             cameraDevice.createCaptureSession(surfaces,
@@ -174,14 +168,25 @@ public class CameraDemo {
                             cameraCaptureSession = session;
                             CaptureRequest previewRequest = mPreviewBuilder.build();
 
-                            try {
-                                cameraCaptureSession.setRepeatingRequest(previewRequest, null, childHandler);
-                            } catch (CameraAccessException e) {
-                                e.printStackTrace();
-                            }
+                            //cameraCaptureSession.setRepeatingRequest(previewRequest, null, childHandler);
+                            new Thread() {
+                                public void run() {
+                                    super.run();
+                                    while (inGazing) {
+                                        try {
+                                            cameraCaptureSession.capture(previewRequest, null, childHandler);
+                                        } catch (CameraAccessException e) {
+                                            e.printStackTrace();
+                                        }
+                                        try {
+                                            sleep(80);
+                                        } catch (InterruptedException e) {
+                                            e.printStackTrace();
+                                        }
+                                    }
+                                }
+                            }.start();
 
-                            isRecording = true;
-                            mediaRecorder.start();
 
                         }
 
@@ -192,149 +197,21 @@ public class CameraDemo {
                         }
                     }, childHandler);
 
-        } catch (CameraAccessException | IOException e) {
+        } catch (CameraAccessException e) {
             e.printStackTrace();
         }
     }
 
     public void closeRecord() {
-        if (isRecording) {
-            try {
-                mediaRecorder.stop();
-                mediaRecorder.reset();
-                mediaRecorder.release();
-            } catch (RuntimeException e) {
-                e.printStackTrace();
-            }
-
-            mediaRecorder = null;
-            isRecording = false;
+        if (inGazing) {
+            inGazing = false;
         }
-
-        videoPath = null;
+        imageReader = null;
+        Log.e("close", frames.size() + "");
     }
 
     // 将视频转化为帧
     @RequiresApi(api = Build.VERSION_CODES.N)
-    private void getFrames(List<Bitmap> videoFrames, String framesDirName) {
-        MediaMetadataRetriever mMMR = new MediaMetadataRetriever();
-        mMMR.setDataSource(gazeVideoPath);
-
-        // 获取视频总长度
-        String durationStr = mMMR.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
-        if (durationStr == null) {
-            Log.e("duration", "the gaze time is too short");
-            removeGazeFile();
-            return;
-        }
-        long duration = Long.valueOf(durationStr);
-        Log.e("duration", durationStr);
-
-        // 帧率
-        float rate = 25;
-        long deltaOfFrames = (long) (1000.0 / rate * 2);
-        /*
-        String thePath = context.getExternalFilesDir(null) + "/frames/" + framesDirName;
-        new File(thePath).mkdirs();
-        Log.e("framePath", thePath);
-         */
-        // 使用多线程处理每一帧,不选取0s对应的帧,即防止由于用户在凝视开始时刻的波动导致误差，将凝视点的起始点删除
-        int framesCount = (int) Math.ceil(duration / deltaOfFrames) - 1;
-        final int TOTAL_THREADS = framesCount / 4;
-        if (TOTAL_THREADS <= 1) {
-            Log.e("GetFrames", "the num of frames is too few to predict");
-            removeGazeFile();
-            return;
-        }
-        Map<Integer, float[]> treeMap = new TreeMap<>();
-        ExecutorService taskExecutor  = Executors.newFixedThreadPool(TOTAL_THREADS);
-        final CountDownLatch latch = new CountDownLatch(framesCount);
-        for (int count = 1; count * deltaOfFrames < duration; count++) {
-            Log.e("xxxx", count - 1 + ";" + count * deltaOfFrames);
-            final int num = count;
-            Runnable run = () -> {
-
-                Bitmap frame = mMMR.getFrameAtTime(deltaOfFrames * num * 1000,
-                        MediaMetadataRetriever.OPTION_CLOSEST);
-                if (frame != null) {
-                    videoFrames.add(frame);
-                } else {
-                    Log.e("Frame", "null");
-                    latch.countDown();
-                    return;
-                }
-
-                // 对图片进行面部检测
-                float[][] arrMask = new float[1][MASK_SIZE * MASK_SIZE];
-                Bitmap[] bitmapArr = null;
-                bitmapArr = faceDetect.detect(frame, arrMask);
-
-                if (bitmapArr[0] == null || bitmapArr[1] == null || bitmapArr[2] == null) {
-                    Log.e("BitmapArray", "null");
-                    latch.countDown();
-                    return;
-                }
-
-                // 使用iTracker模型进行凝视点预测
-                Tracker mTracker = new Tracker(context);
-                Interpreter interpreter = mTracker.get();
-                Object[] inputs = new Object[4];
-                inputs[0] = bitmap2Arr(bitmapArr[1]); // 左眼
-                inputs[1] = bitmap2Arr(bitmapArr[2]); // 右眼
-                inputs[2] = bitmap2Arr(bitmapArr[0]); // 脸
-                inputs[3] = arrMask;
-                float[][] output = new float[1][2];
-                Map<Integer, Object> outputs = new HashMap();
-                outputs.put(0, output);
-
-                interpreter.allocateTensors();
-                interpreter.runForMultipleInputsOutputs(inputs, outputs);
-                treeMap.put(num - 1, new float[]{output[0][0], output[0][1]});
-
-                latch.countDown();
-
-            };
-            taskExecutor.execute(run);
-            // 将得到的bitmap储存起来
-            /*
-            String name = thePath + "/" + count;
-            new File(name).mkdir();
-            generatePic(bitmapArr[0], name, "face");
-            generatePic(bitmapArr[1], name, "lefteye");
-            generatePic(bitmapArr[2], name, "righteye");*/
-
-        }
-        try {
-            //等待所有线程执行完毕
-            latch.await();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-        taskExecutor.shutdown();//关闭线程池
-        Log.e("Thread", "task completed");
-
-        // 删除生成的视频文件
-        removeGazeFile();
-
-        for (Map.Entry<Integer, float[]> entry: treeMap.entrySet()) {
-            Log.e("posInfo", entry.getKey() + " " + entry.getValue()[0] + " "
-            + entry.getValue()[1]);
-        }
-        PositionProcess pp = new PositionProcess();
-        float level = pp.getDistance(treeMap);
-        Log.e("Result", level + "");
-        bdMap.zoomMap(level);
-    }
-
-    private boolean removeGazeFile() {
-        File gazeVideo = new File(gazeVideoPath);
-        if (gazeVideo != null && gazeVideo.exists() && !gazeVideo.isDirectory()){
-            Log.e("deleteVideo", "succeed");
-            gazeVideo.delete();
-            return true;
-        }
-        return false;
-    }
 
     public float[][][][] bitmap2Arr(Bitmap bitmap) {
         float[][][][] result = new float[1][64][64][3];
@@ -362,35 +239,135 @@ public class CameraDemo {
         return result;
     }
 
-    private void generatePic(Bitmap bitmap, String thePath, String fileName) {
-        String name = thePath + "/" +fileName + ".jpg";
-        File file = new File(name);
-        try {
-            FileOutputStream out = new FileOutputStream(file);
-            if (bitmap.compress(Bitmap.CompressFormat.JPEG, 100, out)) {
-                out.flush();
-                out.close();
-            }
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    public void startFaceDetect() {
-        List<Bitmap> videoFrames = new ArrayList<>();
-
-        String framesDirName = System.currentTimeMillis() + "";
+    public void startPredict() {
         new Thread() {
             @RequiresApi(api = Build.VERSION_CODES.N)
             @Override
             public void run() {
                 super.run();
-                getFrames(videoFrames, framesDirName);
+                predict();
             }
         }.start();
 
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.N)
+    private void predict() {
+        final int TOTAL_THREADS = 4;
+        int frameNum = frames.size();
+        if (frameNum <= 5) {
+            Log.e("GetFrames", "the num of frames is too few to predict");
+            return;
+        }
+        int count = 1;
+        Map<Integer, float[]> treeMap = new TreeMap<>();
+        ExecutorService taskExecutor  = Executors.newFixedThreadPool(TOTAL_THREADS);
+        final CountDownLatch latch = new CountDownLatch(frameNum - 1);
+        faceDetect.captureFace = false;
+        // 先串行运行几次，直到captureFace为true，再将剩余的用多线程运行
+        for (; count < frameNum; count++) {
+            predictProcess(latch, count, treeMap);
+            if (faceDetect.captureFace) {
+                break;
+            }
+        }
+        count++;
+        // 开始多线程处理
+        for (; count < frameNum; count++) {
+            Log.e("xxxx", count - 1 + ";" + count * 80);
+            final int num = count;
+            Runnable run = () -> {
+                predictProcess(latch, num, treeMap);
+            };
+            taskExecutor.execute(run);
+        }
+        try {
+            //等待所有线程执行完毕
+            latch.await();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        taskExecutor.shutdown();//关闭线程池
+        Log.e("Thread", "task completed");
+        PositionProcess pp = new PositionProcess();
+        float level = pp.getDistance(treeMap);
+        Log.e("Result", level + "");
+        bdMap.zoomMap(level);
+    }
+
+    @RequiresApi(api = Build.VERSION_CODES.N)
+    private void predictProcess(final CountDownLatch latch, final int num, Map<Integer, float[]> treeMap) {
+        Bitmap frame = byte2Bitmap(frames.get(num));
+        // 对图片进行面部检测
+        float[][] arrMask = new float[1][MASK_SIZE * MASK_SIZE];
+        Bitmap[] bitmapArr = null;
+        bitmapArr = faceDetect.detect(frame, arrMask);
+
+        if (bitmapArr[0] == null || bitmapArr[1] == null || bitmapArr[2] == null) {
+            Log.e("BitmapArray", "null");
+            latch.countDown();
+            return;
+        }
+        // 使用iTracker模型进行凝视点预测
+        Tracker mTracker = new Tracker(context);
+        Interpreter interpreter = mTracker.get();
+        Object[] inputs = new Object[4];
+        inputs[0] = bitmap2Arr(bitmapArr[1]); // 左眼
+        inputs[1] = bitmap2Arr(bitmapArr[2]); // 右眼
+        inputs[2] = bitmap2Arr(bitmapArr[0]); // 脸
+        inputs[3] = arrMask;
+        float[][] output = new float[1][2];
+        Map<Integer, Object> outputs = new HashMap();
+        outputs.put(0, output);
+
+        interpreter.allocateTensors();
+        interpreter.runForMultipleInputsOutputs(inputs, outputs);
+        treeMap.put(num - 1, new float[]{output[0][0], output[0][1]});
+
+        latch.countDown();
+    }
+
+    private Bitmap byte2Bitmap(byte[] bytes) {
+        Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+        if (bitmap != null) {
+            bitmap = adjustPhotoRotation(bitmap, 270);
+        }
+        return bitmap;
+    }
+
+    // 将bitmap进行旋转
+    Bitmap adjustPhotoRotation(Bitmap bm, final int orientationDegree) {
+
+        Matrix m = new Matrix();
+        m.setRotate(orientationDegree, (float) bm.getWidth() / 2, (float) bm.getHeight() / 2);
+        float targetX, targetY;
+        if (orientationDegree == 90) {
+            targetX = bm.getHeight();
+            targetY = 0;
+        } else if (orientationDegree == 270) {
+            targetX = 0;
+            targetY = bm.getWidth();
+        }
+        else {
+            targetX = bm.getHeight();
+            targetY = bm.getWidth();
+        }
+
+        final float[] values = new float[9];
+        m.getValues(values);
+
+        float x1 = values[Matrix.MTRANS_X];
+        float y1 = values[Matrix.MTRANS_Y];
+
+        m.postTranslate(targetX - x1, targetY - y1);
+
+        Bitmap bm1 = Bitmap.createBitmap(bm.getHeight(), bm.getWidth(), Bitmap.Config.ARGB_8888);
+
+        Paint paint = new Paint();
+        Canvas canvas = new Canvas(bm1);
+        canvas.drawBitmap(bm, m, paint);
+
+        return bm1;
     }
 
     @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)

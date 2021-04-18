@@ -144,7 +144,6 @@ public class MainActivity extends AppCompatActivity {
         */
     }
 
-
     // 返回到当前位置视图
     public void returnTo(View view) {
         mBDMap.firstLocate = true;
@@ -156,6 +155,9 @@ public class MainActivity extends AppCompatActivity {
         cameraDemo.cameraView.setSurfaceTextureListener(new MTextureListener());
         // 未开启摄像头时，TextureView不可见
         cameraDemo.cameraView.setVisibility(View.INVISIBLE);
+
+        //////////////////////////
+        cameraDemo.iv_show = findViewById(R.id.picView);
     }
 
     // 开启摄像头
@@ -214,10 +216,10 @@ public class MainActivity extends AppCompatActivity {
                     if (isCameraStart) {
                         gaze.setBackgroundResource(R.drawable.btn_pressed);
                         cameraDemo.startRecord();
-                        /*
+
                         Toast.makeText(getApplicationContext(), "凝视开始",
                                 Toast.LENGTH_SHORT).show();
-                        */
+
                     } else {
                         Toast.makeText(getApplicationContext(), "请先开启摄像头",
                                 Toast.LENGTH_SHORT).show();
@@ -226,13 +228,13 @@ public class MainActivity extends AppCompatActivity {
                 case MotionEvent.ACTION_UP:
                     if (isCameraStart) {
                         gaze.setBackgroundResource(R.drawable.btn_normal);
-                        /*
+
                         Toast.makeText(getApplicationContext(), "凝视结束",
                                 Toast.LENGTH_SHORT).show();
-                        */
+
                         cameraDemo.closeRecord();
 
-                        cameraDemo.startFaceDetect();
+                        cameraDemo.startPredict();
                     }
                     break;
                 default:

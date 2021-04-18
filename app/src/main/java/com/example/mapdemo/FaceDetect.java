@@ -14,6 +14,10 @@ public class FaceDetect {
     int MASK_SIZE = 25; // 要得到的脸部网格矩阵的尺寸
     int MAX_FACES = 2; // 能检测到的最多人脸数量
     double EYE_BOUND = 0.4; // 眼睛部分裁剪时边框长度的一半与两眼间距的比值
+    boolean captureFace = false;
+    PointF mPointF = null;
+    float mEyesDistance = 0f;
+
 
     public FaceDetect(Context con) {
         context = con;
@@ -42,17 +46,82 @@ public class FaceDetect {
         bitmap = bitmap.copy(Bitmap.Config.RGB_565, true);
 
         lengthToEven(bitmap);
+
+        // 根据面部检测的结果处理图片，获得脸部、左右眼和脸部网格
+        if (!captureFace) {
+            if (!detectGetBitmap(bitmap, bitmapArr)) {
+                return bitmapArr;
+            }
+        } else {
+            getBitmapArr(bitmap, bitmapArr, mPointF, mEyesDistance);
+        }
+
+        // 获取脸部网格
+        getFaceGrid(bitmap, arrMask, mPointF, mEyesDistance);
+
+        return bitmapArr;
+    }
+
+    private boolean detectGetBitmap(Bitmap bitmap, Bitmap[] bitmapArr) {
         FaceDetector faceDetector = new FaceDetector(bitmap.getWidth(),
                 bitmap.getHeight(), MAX_FACES);
         FaceDetector.Face[] faces = new FaceDetector.Face[MAX_FACES];
+
         int realFaceNum = faceDetector.findFaces(bitmap, faces);
         if (realFaceNum <= 0) {
             Log.e("detect", "没有检测到人脸");
-            return bitmapArr;
+            return false;
         }
 
-        faceProcess(faces, realFaceNum, bitmap, bitmapArr, arrMask);
-        return bitmapArr;
+        float eyesDistance = 0f;//两眼间距
+        FaceDetector.Face face = faces[0]; // 暂时假定每次都只检测到一张脸
+        if(face != null){
+            PointF pointF = new PointF();
+            face.getMidPoint(pointF); //获取中心点
+            eyesDistance = face.eyesDistance(); //获取人脸两眼的间距
+
+            getBitmapArr(bitmap, bitmapArr, pointF, eyesDistance);
+
+            if (bitmapArr[0] == null || bitmapArr[1] == null || bitmapArr[2] == null) {
+                String str = "";
+                if (bitmapArr[0] == null) {
+                    str += "face,";
+                }
+                if (bitmapArr[1] == null) {
+                    str += "lefteye,";
+                }
+                if (bitmapArr[2] == null) {
+                    str += "righteye,";
+                }
+                Log.e("bitmapNull", str);
+                return false;
+            }
+
+            mPointF = pointF;
+            mEyesDistance = eyesDistance;
+            captureFace = true;
+            return true;
+        }
+        return false;
+    }
+
+    private void getBitmapArr(Bitmap bitmap, Bitmap[] bitmapArr, PointF pointF, float eyesDistance) {
+        Bitmap bitmapFace = imageProcess(bitmap, (int) (pointF.x - eyesDistance),
+                (int) (pointF.y - eyesDistance * 0.5), (int) (eyesDistance * 2), PIC_SIZE);
+
+        Bitmap bitmapLeftEye = imageProcess(bitmap,
+                (int) (pointF.x - eyesDistance * (EYE_BOUND + 0.5)),
+                (int) (pointF.y - eyesDistance * EYE_BOUND),
+                (int) (eyesDistance * 2 * EYE_BOUND), PIC_SIZE);
+
+        Bitmap bitmapRightEye = imageProcess(bitmap,
+                (int) (pointF.x + eyesDistance * (0.5 - EYE_BOUND)),
+                (int) (pointF.y - eyesDistance * EYE_BOUND),
+                (int) (eyesDistance * 2 * EYE_BOUND), PIC_SIZE);
+
+        bitmapArr[0] = bitmapFace;
+        bitmapArr[1] = bitmapLeftEye;
+        bitmapArr[2] = bitmapRightEye;
     }
 
     // 对图像进行处理：裁剪+缩放
@@ -98,68 +167,21 @@ public class FaceDetect {
         }
     }
 
-    // 根据面部检测的结果处理图片，获得脸部、左右眼和脸部网格
-    private void faceProcess(FaceDetector.Face[] faces, int realFaceNum, Bitmap bitmap,
-            Bitmap[] bitmapArr, float[][] arrMask) {
-
-        float eyesDistance = 0f;//两眼间距
-        FaceDetector.Face face = faces[0]; // 暂时假定每次都只检测到一张脸
-        if(face != null){
-            PointF pointF = new PointF();
-            face.getMidPoint(pointF); //获取中心点
-            eyesDistance = face.eyesDistance(); //获取人脸两眼的间距
-
-
-
-            Bitmap bitmapFace = imageProcess(bitmap, (int) (pointF.x - eyesDistance),
-                    (int) (pointF.y - eyesDistance * 0.5), (int) (eyesDistance * 2), PIC_SIZE);
-
-            Bitmap bitmapLeftEye = imageProcess(bitmap,
-                    (int) (pointF.x - eyesDistance * (EYE_BOUND + 0.5)),
-                    (int) (pointF.y - eyesDistance * EYE_BOUND),
-                    (int) (eyesDistance * 2 * EYE_BOUND), PIC_SIZE);
-
-            Bitmap bitmapRightEye = imageProcess(bitmap,
-                    (int) (pointF.x + eyesDistance * (0.5 - EYE_BOUND)),
-                    (int) (pointF.y - eyesDistance * EYE_BOUND),
-                    (int) (eyesDistance * 2 * EYE_BOUND), PIC_SIZE);
-
-            if (bitmapFace == null || bitmapLeftEye == null || bitmapRightEye == null) {
-                String str = "";
-                if (bitmapFace == null) {
-                    str += "face,";
-                }
-                if (bitmapLeftEye == null) {
-                    str += "lefteye,";
-                }
-                if (bitmapRightEye == null) {
-                    str += "righteye,";
-                }
-                Log.e("bitmapNull", str);
-                return;
-            }
-
-            bitmapArr[0] = bitmapFace;
-            bitmapArr[1] = bitmapLeftEye;
-            bitmapArr[2] = bitmapRightEye;
-
-
-
-            // 获取脸部网格
-            int edge = (int) (eyesDistance * 2);
-            int[] pixels = new int[edge * edge];
-            for (int j = 0; j < edge * edge; j++) {
-                pixels[j] = Color.BLACK;
-            }
-
-            Bitmap bitmapMask = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(),
-                    Bitmap.Config.ARGB_8888);
-            bitmapMask.eraseColor(Color.WHITE);
-            bitmapMask.setPixels(pixels, 0, edge, (int) (pointF.x - eyesDistance),
-                    (int) (pointF.y - eyesDistance * 0.5), edge, edge);
-            bitmapMask = imageScale(bitmapMask, MASK_SIZE, MASK_SIZE);
-
-            zeroOrOne(bitmapMask, arrMask);
+    private void getFaceGrid(Bitmap bitmap, float[][] arrMask, PointF pointF, float eyesDistance) {
+        int edge = (int) (eyesDistance * 2);
+        int[] pixels = new int[edge * edge];
+        for (int j = 0; j < edge * edge; j++) {
+            pixels[j] = Color.BLACK;
         }
+
+        Bitmap bitmapMask = Bitmap.createBitmap(bitmap.getWidth(), bitmap.getHeight(),
+                Bitmap.Config.ARGB_8888);
+        bitmapMask.eraseColor(Color.WHITE);
+        bitmapMask.setPixels(pixels, 0, edge, (int) (pointF.x - eyesDistance),
+                (int) (pointF.y - eyesDistance * 0.5), edge, edge);
+        bitmapMask = imageScale(bitmapMask, MASK_SIZE, MASK_SIZE);
+
+        zeroOrOne(bitmapMask, arrMask);
     }
+
 }
